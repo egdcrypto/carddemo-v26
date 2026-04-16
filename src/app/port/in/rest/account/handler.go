@@ -29,7 +29,7 @@ func (h *AccountHandler) RegisterRoutes(r chi.Router) {
 		r.Get("/{id}", h.GetAccount)
 		r.Put("/{id}", h.UpdateAccount)
 		r.Delete("/{id}", h.DeleteAccount)
-		
+
 		// Sub-routes for profile are technically part of this aggregate context
 		// but handled separately if needed. The prompt focuses on /accounts.
 		r.Get("/{id}/profile", h.GetUserProfile) // Stub for AC
