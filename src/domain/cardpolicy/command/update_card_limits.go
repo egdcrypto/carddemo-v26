@@ -1,11 +1,7 @@
 package command
 
-// UpdateCardLimitsCmd is a command to adjust the daily or monthly spending limits
-// allocated to a specific card.
+// UpdateCardLimitsCmd is a command to change the spending limits of a card policy.
 type UpdateCardLimitsCmd struct {
-	CardID             string
-	DailyLimit         int64
-	MonthlyLimit       int64
-	AuthorizationToken string
-	ProfileID          string // Used to trigger invariants based on risk profile
+	DailyLimit  int
+	WeeklyLimit int
 }
