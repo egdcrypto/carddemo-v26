@@ -1,46 +1,31 @@
 package model
 
 import (
-	"errors"
 	"time"
-
-	"github.com/google/uuid"
 )
 
-var (
-	// ErrInvalidTransaction is returned when a transaction cannot be created.
-	ErrInvalidTransaction = errors.New("invalid transaction data")
-)
-
-// Transaction represents the domain aggregate for financial transactions.
+// Transaction represents the transaction aggregate.
 type Transaction struct {
-	ID        string
-	CardID    string
-	Amount    float64
-	Currency  string
-	MerchantID string
-	Status    string // e.g., "pending", "completed", "reversed"
-	Timestamp time.Time
-	// Version is used for optimistic locking.
-	Version int
+	ID              string
+	AccountID       string
+	CardID          string
+	Amount          float64
+	TransactionType string
+	Status          string // e.g., "Submitted", "Reversed"
+	CreatedAt       int64
+	Version         int
 }
 
 // NewTransaction creates a new Transaction aggregate.
-func NewTransaction(id, cardID string, amount float64, currency, merchantID, status string) (*Transaction, error) {
-	if id == "" {
-		id = uuid.New().String()
-	}
-	if amount <= 0 {
-		return nil, ErrInvalidTransaction
-	}
+func NewTransaction(id, accountID, cardID string, amount float64, txType string) *Transaction {
 	return &Transaction{
-		ID:        id,
-		CardID:    cardID,
-		Amount:    amount,
-		Currency:  currency,
-		MerchantID: merchantID,
-		Status:    status,
-		Timestamp: time.Now(),
-		Version:   0,
-	}, nil
+		ID:              id,
+		AccountID:       accountID,
+		CardID:          cardID,
+		Amount:          amount,
+		TransactionType: txType,
+		Status:          "Submitted",
+		CreatedAt:       time.Now().Unix(),
+		Version:         1,
+	}
 }
