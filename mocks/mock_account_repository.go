@@ -1,59 +1,26 @@
 package mocks
 
 import (
+	"context"
+	"errors"
 	"sync"
-
-	"github.com/carddemo/project/src/domain/account/model"
-	"github.com/carddemo/project/src/domain/account/repository"
 )
 
-// MockAccountRepository is an in-memory implementation of repository.AccountRepository.
+// MockAccountRepository is a mock for AccountRepository
 type MockAccountRepository struct {
 	mu   sync.RWMutex
-	data map[string]*model.Account
+	data map[string]interface{} // stored as empty struct or mock
 }
 
-// NewMockAccountRepository creates a new mock repository.
 func NewMockAccountRepository() *MockAccountRepository {
-	return &MockAccountRepository{
-		data: make(map[string]*model.Account),
-	}
+	return &MockAccountRepository{data: make(map[string]interface{})}
 }
 
-// Ensure MockAccountRepository implements the interface.
-var _ repository.AccountRepository = (*MockAccountRepository)(nil)
-
-// Get retrieves an aggregate by ID.
-func (m *MockAccountRepository) Get(id string) (*model.Account, error) {
+func (m *MockAccountRepository) Get(ctx context.Context, id string) (interface{}, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.data[id], nil
-}
-
-// Save stores an aggregate.
-func (m *MockAccountRepository) Save(aggregate *model.Account) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.data[aggregate.ID] = aggregate
-	return nil
-}
-
-// Delete removes an aggregate.
-func (m *MockAccountRepository) Delete(id string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.data, id)
-	return nil
-}
-
-// List returns all aggregates.
-func (m *MockAccountRepository) List() ([]*model.Account, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	arr := make([]*model.Account, 0, len(m.data))
-	for _, v := range m.data {
-		arr = append(arr, v)
+	if _, ok := m.data[id]; !ok {
+		return nil, errors.New("account not found")
 	}
-	return arr, nil
+	return struct{ ID string }{ID: id}, nil
 }
