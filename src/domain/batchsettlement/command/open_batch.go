@@ -1,7 +1,8 @@
 package command
 
-// OpenBatchCmd is the command to initiate a new daily batch settlement cycle.
+// OpenBatchCmd is the command to open a new settlement batch.
 type OpenBatchCmd struct {
-	SettlementDate    string
-	OperationalRegion string
+	BatchID    string
+	MerchantID string
+	Currency   string
 }
