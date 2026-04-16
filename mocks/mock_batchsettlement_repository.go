@@ -7,13 +7,16 @@ import (
 	"github.com/carddemo/project/src/domain/batchsettlement/repository"
 )
 
+// MockBatchSettlementRepository is an in-memory implementation of BatchSettlementRepository.
 type MockBatchSettlementRepository struct {
 	mu   sync.RWMutex
 	data map[string]*model.BatchSettlement
 }
 
 func NewMockBatchSettlementRepository() *MockBatchSettlementRepository {
-	return &MockBatchSettlementRepository{data: make(map[string]*model.BatchSettlement)}
+	return &MockBatchSettlementRepository{
+		data: make(map[string]*model.BatchSettlement),
+	}
 }
 
 var _ repository.BatchSettlementRepository = (*MockBatchSettlementRepository)(nil)
@@ -28,13 +31,6 @@ func (m *MockBatchSettlementRepository) Save(aggregate *model.BatchSettlement) e
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.data[aggregate.ID] = aggregate
-	return nil
-}
-
-func (m *MockBatchSettlementRepository) Delete(id string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.data, id)
 	return nil
 }
 
