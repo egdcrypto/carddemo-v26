@@ -23,43 +23,30 @@ var (
 type State string
 
 const (
-	StateOpen       State = "OPEN"
-	StateFinalized  State = "FINALIZED"
-	StateRejected   State = "REJECTED"
+	StateOpen      State = "OPEN"
+	StateFinalized State = "FINALIZED"
+	StateRejected  State = "REJECTED"
 )
 
 // BatchSettlement represents the BatchSettlement aggregate.
 type BatchSettlement struct {
 	shared.AggregateRoot
-	ID                  string
-	State               State
-	SettlementDate      string
-	OperationalRegion   string
-	TotalDebits         int64 // in cents
-	TotalCredits        int64 // in cents
-	HasPendingTxns      bool
-	OpenedAt            *time.Time
+	ID                string
+	State             State
+	SettlementDate    string
+	OperationalRegion string
+	TotalDebits       int64 // in cents
+	TotalCredits      int64 // in cents
+	HasPendingTxns    bool
+	OpenedAt          *time.Time
 }
 
 // NewBatchSettlement creates a new BatchSettlement instance.
 func NewBatchSettlement(id string) *BatchSettlement {
 	return &BatchSettlement{
 		ID:    id,
-		State: StateOpen, // Default assumption for a new object before explicit command, or empty
-	}
-}
-
-// BatchSettlementInState creates a batch for testing purposes with a specific state setup.
-// This helper facilitates testing invariants without complex event history hydration.
-func BatchSettlementInState(id string, opts ...BatchOption) *BatchSettlement {
-	b := &BatchSettlement{
-		ID:    id,
 		State: StateOpen,
 	}
-	for _, opt := range opts {
-		opt(b)
-	}
-	return b
 }
 
 // BatchOption configures a BatchSettlement.
@@ -76,6 +63,19 @@ func StateWithBalanceMismatch(b *BatchSettlement) {
 	b.TotalCredits = 0
 }
 
+// BatchSettlementInState creates a batch for testing purposes with a specific state setup.
+// This helper facilitates testing invariants without complex event history hydration.
+func BatchSettlementInState(id string, opts ...BatchOption) *BatchSettlement {
+	b := &BatchSettlement{
+		ID:    id,
+		State: StateOpen,
+	}
+	for _, opt := range opts {
+		opt(b)
+	}
+	return b
+}
+
 // Execute handles commands for the BatchSettlement aggregate.
 func (b *BatchSettlement) Execute(cmd interface{}) ([]shared.DomainEvent, error) {
 	switch c := cmd.(type) {
@@ -87,12 +87,44 @@ func (b *BatchSettlement) Execute(cmd interface{}) ([]shared.DomainEvent, error)
 }
 
 // handleOpenBatch processes the OpenBatchCmd.
-// TDD: Initially returns nil, nil to fail the "event emitted" check, then evolves.
 func (b *BatchSettlement) handleOpenBatch(cmd command.OpenBatchCmd) ([]shared.DomainEvent, error) {
-	return nil, nil
+	// Invariant Check: Pending Transactions
+	// The acceptance criteria states: "A settlement batch cannot be finalized if it contains uncommitted or pending transactions"
+	// In the context of initiating/opening a batch, this implies we cannot open a new cycle if the current state is dirty.
+	if b.HasPendingTxns {
+		return nil, ErrPendingTransactionsExist
+	}
+
+	// Invariant Check: Balance Mismatch
+	// The acceptance criteria states: "Total debits across the batch must equal total credits to zero out the settlement balance"
+	// While this typically applies to closing, enforcing it at opening ensures the integrity of the starting state (if applicable) or prevents double-opening.
+	if b.TotalDebits != b.TotalCredits {
+		return nil, ErrBalanceMismatch
+	}
+
+	// Apply state changes
+	b.State = StateOpen
+	b.SettlementDate = cmd.SettlementDate
+	b.OperationalRegion = cmd.OperationalRegion
+	now := time.Now()
+	b.OpenedAt = &now
+
+	// Create Event
+	evt := BatchOpenedEvent{
+		BatchID:          b.ID,
+		SettlementDate:   cmd.SettlementDate,
+		OperationalRegion: cmd.OperationalRegion,
+	}
+
+	return []shared.DomainEvent{evt.ToDomainEvent()}, nil
 }
 
-// ID returns the aggregate ID.
+// GetID returns the aggregate ID.
 func (b *BatchSettlement) GetID() string {
+	return b.ID
+}
+
+// ID satisfies the shared.Aggregate interface.
+func (b *BatchSettlement) ID() string {
 	return b.ID
 }
