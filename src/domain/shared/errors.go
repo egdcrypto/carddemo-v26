@@ -1,11 +1,9 @@
-package shared
+package rest
 
 import "errors"
 
-// Common domain errors.
+// Common errors used by handlers.
 var (
-	// ErrNotFound is returned when an entity cannot be found in the repository.
-	ErrNotFound = errors.New("entity not found")
-	// ErrConcurrency is returned when an optimistic locking check fails.
-	ErrConcurrency = errors.New("concurrency conflict")
+	// ErrNotFound is returned when a requested resource is not found.
+	ErrNotFound = errors.New("resource not found")
 )
