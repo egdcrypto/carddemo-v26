@@ -2,102 +2,173 @@ package repository
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"time"
 
 	"github.com/carddemo/project/src/domain/account/model"
-	repo "github.com/carddemo/project/src/domain/account/repository"
+	"github.com/carddemo/project/src/domain/account/repository"
+	"github.com/carddemo/project/src/domain/shared"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// MongoAccountRepository implements repo.AccountRepository using MongoDB.
+// Ensure implementation satisfies interface
+var _ repository.AccountRepository = (*MongoAccountRepository)(nil)
+
+// MongoAccountRepository is a MongoDB implementation of the account repository.
 type MongoAccountRepository struct {
 	coll *mongo.Collection
 }
 
 // NewMongoAccountRepository creates a new MongoAccountRepository.
-func NewMongoAccountRepository(db *mongo.Database) repo.AccountRepository {
-	return &MongoAccountRepository{
-		coll: db.Collection("accounts"),
-	}
+func NewMongoAccountRepository(db *mongo.Database) *MongoAccountRepository {
+	coll := db.Collection("accounts")
+
+	// Create indexes in the background upon initialization.
+	// In a production app, you might handle errors more strictly or use a migration tool.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		idxModel := mongo.IndexModel{
+			Keys:    bson.D{{Key: "_id", Value: 1}}, // MongoDB _id is unique by default, but explicit if we used custom ID field
+			Options: options.Index().SetUnique(true),
+		}
+		// Create a unique index on the 'id' field if we store it separately from _id,
+		// or rely on _id. Assuming domain ID maps to _id.
+		// We also need an index on email for quick lookups if that's a query pattern.
+
+		name, err := coll.Indexes().CreateOne(ctx, idxModel)
+		if err != nil {
+			fmt.Printf("[MongoAccountRepository] Failed to create index: %v\n", err)
+		} else {
+			fmt.Printf("[MongoAccountRepository] Created index: %s\n", name)
+		}
+	}()
+
+	return &MongoAccountRepository{coll: coll}
 }
 
-// Get retrieves an aggregate by ID.
+// Get retrieves an account by ID.
 func (r *MongoAccountRepository) Get(id string) (*model.Account, error) {
-	var agg model.Account
-	filter := bson.M{"_id": id}
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	err := r.coll.FindOne(ctx, filter).Decode(&agg)
+	var doc accountDocument
+	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&doc)
 	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, shared.ErrNotFound
+		}
 		return nil, err
 	}
-	return &agg, nil
+
+	return doc.toDomain(), nil
 }
 
-// Save stores an aggregate.
-// It implements optimistic locking by checking the version.
+// Save creates or updates an account aggregate.
 func (r *MongoAccountRepository) Save(aggregate *model.Account) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	doc := fromDomain(aggregate)
+
+	// Optimistic Locking check
 	filter := bson.M{
-		"_id": aggregate.ID,
-		// Ensure we are updating the version we expect.
-		// Note: In a true 'create' flow (Version 0 -> 1), the document might not exist yet.
+		"_id":     doc.ID,
+		"version": aggregate.Version - 1, // Check current version matches expectation
 	}
 
-	// If version is 0 (new aggregate), we try to insert.
-	if aggregate.Version == 1 {
-		// Check if it exists first for robust UPSERT, or just use Upsert.
-		// For simplicity in this implementation:
-		_, err := r.coll.InsertOne(context.Background(), aggregate)
-		return err
+	update := bson.M{
+		"$set": doc,
 	}
 
-	// If version > 1, we update with optimistic locking.
-	filter["version"] = aggregate.Version - 1
-
-	update := bson.M{"$set": aggregate}
-	// Increment version atomically in DB to match the aggregate logic (optional, but good practice)
-	update["$inc"] = bson.M{"version": 1}
-
-	// However, since our aggregate sets the version in memory, we just pass the object.
-	// To satisfy the review feedback regarding 'Version is set', we trust the aggregate passed in.
-	// The filter ensures no one else updated it in the meantime.
+	// Upsert: Create if not exists, Update if exists and version matches.
+	// If version mismatch (UpdateResult.MatchedCount == 0), return error.
+	// Note: For new aggregates (Version 0), we expect UpsertedCount.
 	
-	// Re-defining update for the aggregate passed in (which already has version incremented by Execute)
-	update = bson.M{"$set": aggregate}
+	opts := options.Update().SetUpsert(true)
 
-	opts := options.Update().SetUpsert(false)
-	result, err := r.coll.UpdateOne(context.Background(), filter, update, opts)
+	result, err := r.coll.UpdateOne(ctx, filter, update, opts)
 	if err != nil {
 		return err
 	}
-	if result.MatchedCount == 0 {
-		// Optimistic lock violation
-		return mongo.ErrNoDocuments
+
+	// Check optimistic lock failure: It existed but wasn't updated (version mismatch)
+	if result.MatchedCount == 0 && result.UpsertedCount == 0 {
+		return shared.ErrConcurrencyConflict
 	}
 
 	return nil
 }
 
-// Delete removes an aggregate.
+// Delete removes an account by ID.
 func (r *MongoAccountRepository) Delete(id string) error {
-	filter := bson.M{"_id": id}
-	_, err := r.coll.DeleteOne(context.Background(), filter)
-	return err
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := r.coll.DeleteOne(ctx, bson.M{"_id": id})
+	if err != nil {
+		return err
+	}
+
+	if result.DeletedCount == 0 {
+		return shared.ErrNotFound
+	}
+
+	return nil
 }
 
-// List returns all aggregates.
+// List returns all accounts.
 func (r *MongoAccountRepository) List() ([]*model.Account, error) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	cursor, err := r.coll.Find(ctx, bson.D{})
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
 
-	var results []*model.Account
-	if err = cursor.All(ctx, &results); err != nil {
+	var docs []accountDocument
+	if err = cursor.All(ctx, &docs); err != nil {
 		return nil, err
 	}
-	return results, nil
+
+	accounts := make([]*model.Account, len(docs))
+	for i, doc := range docs {
+		accounts[i] = doc.toDomain()
+	}
+
+	return accounts, nil
+}
+
+// accountDocument represents the MongoDB schema.
+type accountDocument struct {
+	ID     string `bson:"_id"`
+	Status string `bson:"status"`
+	// Adding other fields typically found in Account Aggregate if needed
+	Balance int64  `bson:"balance,omitempty"`
+	Version int    `bson:"version"`
+}
+
+func fromDomain(a *model.Account) accountDocument {
+	return accountDocument{
+		ID:     a.ID,
+		Status: a.Status,
+		Version: a.Version,
+		// Map other fields as necessary
+	}
+}
+
+func (d accountDocument) toDomain() *model.Account {
+	// We use the model constructor orhydrate the struct directly.
+	// Assuming model.Account has exported fields or a Hydrate method.
+	// Based on typical DDD, we might reconstruct it.
+	return &model.Account{
+		ID:     d.ID,
+		Status: d.Status,
+		Version: d.Version,
+	}
 }
