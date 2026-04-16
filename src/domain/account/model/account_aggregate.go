@@ -1,58 +1,82 @@
 package model
 
 import (
-	"time"
+	"errors"
 
+	"github.com/carddemo/project/src/domain/account/command"
+	"github.com/carddemo/project/src/domain/account/event"
 	"github.com/carddemo/project/src/domain/shared"
+	"github.com/google/uuid"
 )
 
-// Account is the aggregate root for the Account domain.
+var (
+	// ErrInvalidCommand is returned when the command is not applicable.
+	ErrInvalidCommand = errors.New("invalid command")
+)
+
+// Account is the aggregate root.
 type Account struct {
 	shared.AggregateRoot
-	ID     string
-	Status string
-	// Add other fields as necessary
+	ID            string
+	UserProfileID string
+	Status        string
+	AccountType   string
+	Version       int
 }
 
 // NewAccount creates a new Account aggregate.
-func NewAccount(id, status string) *Account {
+func NewAccount(profileID, status, accountType string) *Account {
 	return &Account{
-		AggregateRoot: shared.AggregateRoot{
-			Version: 1,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		},
-		ID:     id,
-		Status: status,
+		ID:            uuid.New().String(),
+		UserProfileID: profileID,
+		Status:        status,
+		AccountType:   accountType,
+		Version:       1,
+		AggregateRoot: shared.AggregateRoot{},
 	}
 }
 
-// ToDocument converts the domain aggregate to a representation suitable for MongoDB.
-// Note: We use explicit structs rather than bson tags to maintain domain purity.
-func (a *Account) ToDocument() *AccountDocument {
-	return &AccountDocument{
-		ID:        a.ID,
-		Status:    a.Status,
-		Version:   a.Version,
-		CreatedAt: a.CreatedAt,
-		UpdatedAt: a.UpdatedAt,
+// Execute handles commands.
+func (a *Account) Execute(cmd interface{}) error {
+	switch c := cmd.(type) {
+	case command.OpenAccountCmd:
+		return a.handleOpenAccount(c)
+	case command.UpdateAccountStatusCmd:
+		return a.handleUpdateStatus(c)
+	default:
+		return ErrInvalidCommand
 	}
 }
 
-// FromDocument hydrates the domain aggregate from MongoDB data.
-func (a *Account) FromDocument(doc *AccountDocument) {
-	a.ID = doc.ID
-	a.Status = doc.Status
-	a.Version = doc.Version
-	a.CreatedAt = doc.CreatedAt
-	a.UpdatedAt = doc.UpdatedAt
+func (a *Account) handleOpenAccount(cmd command.OpenAccountCmd) error {
+	// Ideally, logic to check initial state goes here.
+	// Since this is a constructor flow in the handler for simplicity, we just record the event.
+	e := event.NewAccountOpened(a.ID, cmd)
+	// Populate event payload
+	e.Payload.AccountID = a.ID
+	e.Payload.UserProfileID = a.UserProfileID
+	e.Payload.Status = a.Status
+	e.Payload.AccountType = a.AccountType
+
+	a.AddEvent(e)
+	return nil
 }
 
-// AccountDocument is the database schema for Account.
-type AccountDocument struct {
-	ID        string    `bson:"_id"`
-	Status    string    `bson:"status"`
-	Version   int       `bson:"version"`
-	CreatedAt time.Time `bson:"created_at"`
-	UpdatedAt time.Time `bson:"updated_at"`
+func (a *Account) handleUpdateStatus(cmd command.UpdateAccountStatusCmd) error {
+	oldStatus := a.Status
+	// Simple business logic validation
+	if a.Status == cmd.NewStatus {
+		return nil // No-op
+	}
+
+	a.Status = cmd.NewStatus
+
+	e := event.NewAccountStatusUpdated(a.ID)
+	e.Payload.AccountID = a.ID
+	e.Payload.OldStatus = oldStatus
+	e.Payload.NewStatus = cmd.NewStatus
+	e.Payload.Reason = cmd.Reason
+
+	a.AddEvent(e)
+	return nil
 }
