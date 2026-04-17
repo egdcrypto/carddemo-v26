@@ -1,56 +1,83 @@
 package model
 
 import (
+	"errors"
 	"time"
 
+	"github.com/carddemo/project/src/domain/userprofile/command"
+	"github.com/carddemo/project/src/domain/userprofile/event"
 	"github.com/carddemo/project/src/domain/shared"
 )
 
-// UserProfile is the aggregate root for the UserProfile domain.
+var (
+	ErrProfileNotFound = errors.New("profile not found")
+)
+
+// UserProfile is the aggregate root.
 type UserProfile struct {
 	shared.AggregateRoot
-	ID    string
-	Email string
+	ID        string
+	AccountID string
+	FirstName string
+	LastName  string
+	Email     string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // NewUserProfile creates a new UserProfile aggregate.
-func NewUserProfile(id, email string) *UserProfile {
+func NewUserProfile(id, accountID, firstName, lastName, email string) *UserProfile {
 	return &UserProfile{
-		AggregateRoot: shared.AggregateRoot{
-			Version:   1,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		},
-		ID:    id,
-		Email: email,
+		AggregateRoot: shared.AggregateRoot{Version: 0},
+		ID:            id,
+		AccountID:     accountID,
+		FirstName:     firstName,
+		LastName:      lastName,
+		Email:         email,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 }
 
-// ToDocument converts the domain aggregate to a representation suitable for MongoDB.
-func (u *UserProfile) ToDocument() *UserProfileDocument {
-	return &UserProfileDocument{
-		ID:        u.ID,
-		Email:     u.Email,
-		Version:   u.Version,
-		CreatedAt: u.CreatedAt,
-		UpdatedAt: u.UpdatedAt,
+// Execute handles commands.
+func (u *UserProfile) Execute(cmd interface{}) error {
+	switch c := cmd.(type) {
+	case *command.LinkUserToAccountCommand:
+		return u.linkUser(c)
+	case *command.RegisterUserCommand:
+		return u.registerUser(c)
+	default:
+		return shared.ErrUnknownCommand
 	}
 }
 
-// FromDocument hydrates the domain aggregate from MongoDB data.
-func (u *UserProfile) FromDocument(doc *UserProfileDocument) {
-	u.ID = doc.ID
-	u.Email = doc.Email
-	u.Version = doc.Version
-	u.CreatedAt = doc.CreatedAt
-	u.UpdatedAt = doc.UpdatedAt
+func (u *UserProfile) linkUser(cmd *command.LinkUserToAccountCommand) error {
+	// If it's a new profile, set basic info. If existing, update.
+	// Assuming this handler is used for the PUT /profile endpoint which effectively upserts/links.
+	u.FirstName = cmd.FirstName
+	u.LastName = cmd.LastName
+	u.UpdatedAt = time.Now()
+
+	evt := event.NewUserProfileLinked(u.ID)
+	evt.Payload.UserProfileID = u.ID
+	evt.Payload.AccountID = u.AccountID
+	evt.Payload.FirstName = u.FirstName
+	evt.Payload.LastName = u.LastName
+
+	u.AddEvent(evt)
+	return nil
 }
 
-// UserProfileDocument is the database schema for UserProfile.
-type UserProfileDocument struct {
-	ID        string    `bson:"_id"`
-	Email     string    `bson:"email"`
-	Version   int       `bson:"version"`
-	CreatedAt time.Time `bson:"created_at"`
-	UpdatedAt time.Time `bson:"updated_at"`
+func (u *UserProfile) registerUser(cmd *command.RegisterUserCommand) error {
+	u.FirstName = cmd.FirstName
+	u.LastName = cmd.LastName
+	u.Email = cmd.Email
+	u.UpdatedAt = time.Now()
+
+	evt := event.NewUserRegistered(u.ID)
+	evt.Payload.UserProfileID = u.ID
+	evt.Payload.Email = u.Email
+
+	u.AddEvent(evt)
+	return nil
 }
