@@ -1,21 +1,36 @@
 package shared
 
-import (
-	"github.com/google/uuid"
-)
+import "github.com/google/uuid"
 
-// AggregateRoot provides base functionality for aggregates.
+// GenerateUUID creates a new random UUID.
+func GenerateUUID() string {
+	return uuid.New().String()
+}
+
+// AggregateRoot is the base struct for all aggregates.
 type AggregateRoot struct {
-	Events []interface{}
+	ID      string
 	Version int
+	events  []Event
 }
 
 // AddEvent adds a domain event to the aggregate.
-func (a *AggregateRoot) AddEvent(event interface{}) {
-	a.Events = append(a.Events, event)
+func (a *AggregateRoot) AddEvent(event Event) {
+	a.events = append(a.events, event)
 }
 
-// GenerateID creates a new UUID.
-func GenerateID() string {
-	return uuid.New().String()
+// GetEvents retrieves the list of recorded events.
+func (a *AggregateRoot) GetEvents() []Event {
+	return a.events
+}
+
+// ClearEvents removes all events from the aggregate.
+func (a *AggregateRoot) ClearEvents() {
+	a.events = nil
+}
+
+// Event is the interface for domain events.
+type Event interface {
+	Type() string
+	AggregateID() string
 }
