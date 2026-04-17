@@ -7,26 +7,36 @@ import (
 	"github.com/carddemo/project/src/domain/userprofile/repository"
 )
 
-// MockUserProfileRepository is an in-memory implementation of repository.UserProfileRepository.
+// MockUserProfileRepository is an in-memory implementation for testing.
 type MockUserProfileRepository struct {
 	mu   sync.RWMutex
 	data map[string]*model.UserProfile
 }
 
-// NewMockUserProfileRepository creates a new mock repository.
 func NewMockUserProfileRepository() *MockUserProfileRepository {
-	return &MockUserProfileRepository{
-		data: make(map[string]*model.UserProfile),
-	}
+	return &MockUserProfileRepository{data: make(map[string]*model.UserProfile)}
 }
 
-// Ensure MockUserProfileRepository implements the interface.
 var _ repository.UserProfileRepository = (*MockUserProfileRepository)(nil)
 
 func (m *MockUserProfileRepository) Get(id string) (*model.UserProfile, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.data[id], nil
+	if val, ok := m.data[id]; ok {
+		return val, nil
+	}
+	return nil, nil
+}
+
+func (m *MockUserProfileRepository) GetByAccountID(accountID string) (*model.UserProfile, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, v := range m.data {
+		if v.AccountID == accountID {
+			return v, nil
+		}
+	}
+	return nil, nil
 }
 
 func (m *MockUserProfileRepository) Save(aggregate *model.UserProfile) error {
@@ -46,7 +56,6 @@ func (m *MockUserProfileRepository) Delete(id string) error {
 func (m *MockUserProfileRepository) List() ([]*model.UserProfile, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-
 	arr := make([]*model.UserProfile, 0, len(m.data))
 	for _, v := range m.data {
 		arr = append(arr, v)
