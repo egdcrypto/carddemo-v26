@@ -3,33 +3,43 @@ package mocks
 import (
 	"sync"
 
-	"github.com/carddemo/project/src/domain/userprofile/model"
-	"github.com/carddemo/project/src/domain/userprofile/repository"
+	userprofile_model "github.com/carddemo/project/src/domain/userprofile/model"
+	userprofile_repository "github.com/carddemo/project/src/domain/userprofile/repository"
 )
 
-// MockUserProfileRepository is an in-memory implementation of repository.UserProfileRepository.
+// MockUserProfileRepository is an in-memory implementation for testing.
 type MockUserProfileRepository struct {
 	mu   sync.RWMutex
-	data map[string]*model.UserProfile
+	data map[string]*userprofile_model.UserProfile
 }
 
-// NewMockUserProfileRepository creates a new mock repository.
 func NewMockUserProfileRepository() *MockUserProfileRepository {
-	return &MockUserProfileRepository{
-		data: make(map[string]*model.UserProfile),
-	}
+	return &MockUserProfileRepository{data: make(map[string]*userprofile_model.UserProfile)}
 }
 
-// Ensure MockUserProfileRepository implements the interface.
-var _ repository.UserProfileRepository = (*MockUserProfileRepository)(nil)
+var _ userprofile_repository.UserProfileRepository = (*MockUserProfileRepository)(nil)
 
-func (m *MockUserProfileRepository) Get(id string) (*model.UserProfile, error) {
+func (m *MockUserProfileRepository) Get(id string) (*userprofile_model.UserProfile, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.data[id], nil
+	if val, ok := m.data[id]; ok {
+		return val, nil
+	}
+	return nil, nil // Not found
 }
 
-func (m *MockUserProfileRepository) Save(aggregate *model.UserProfile) error {
+func (m *MockUserProfileRepository) GetByAccountID(accountID string) (*userprofile_model.UserProfile, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, v := range m.data {
+		if v.AccountID == accountID {
+			return v, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *MockUserProfileRepository) Save(aggregate *userprofile_model.UserProfile) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.data[aggregate.ID] = aggregate
@@ -43,11 +53,10 @@ func (m *MockUserProfileRepository) Delete(id string) error {
 	return nil
 }
 
-func (m *MockUserProfileRepository) List() ([]*model.UserProfile, error) {
+func (m *MockUserProfileRepository) List() ([]*userprofile_model.UserProfile, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-
-	arr := make([]*model.UserProfile, 0, len(m.data))
+	arr := make([]*userprofile_model.UserProfile, 0, len(m.data))
 	for _, v := range m.data {
 		arr = append(arr, v)
 	}
