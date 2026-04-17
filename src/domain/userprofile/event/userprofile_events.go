@@ -1,48 +1,43 @@
 package event
 
 import (
+	"github.com/google/uuid"
 	"time"
 
 	"github.com/carddemo/project/src/domain/shared"
 )
 
-// UserRegistered is emitted when a new user profile is created.
-type UserRegistered struct {
-	shared.DomainEventBase
-	AggregateID string `json:"aggregate_id"`
-	Email       string `json:"email"`
-	CreditScore int    `json:"credit_score"`
+// UserProfileUpdated is published when user details change.
+type UserProfileUpdated struct {
+	shared.CloudEventEnvelope
+	Payload struct {
+		UserProfileID string `json:"user_profile_id"`
+		AccountID     string `json:"account_id"`
+		FirstName     string `json:"first_name"`
+		LastName      string `json:"last_name"`
+		Email         string `json:"email"`
+	} `json:"data"`
 }
 
-// NewUserRegistered creates a UserRegistered event.
-func NewUserRegistered(aggregateID string, email string, creditScore int) shared.DomainEvent {
-	return &UserRegistered{
-		DomainEventBase: shared.DomainEventBase{
-			Type:      "com.carddemo.user.registered",
-			Timestamp: time.Now().UTC(),
-			// Data will be populated by the aggregate
-		},
-		AggregateID: aggregateID,
-		Email:       email,
-		CreditScore: creditScore,
-	}
+// NewUserProfileUpdated creates a new UserProfileUpdated event.
+func NewUserProfileUpdated(aggregateID string) *UserProfileUpdated {
+	e := &UserProfileUpdated{}
+	e.ID = uuid.New().String()
+	e.Source = "/userprofile"
+	e.SpecVersion = "1.0"
+	e.Type = "com.carddemo.userprofile.updated"
+	e.DataContentType = "application/json"
+	e.Time = time.Now().Format(time.RFC3339)
+	e.Subject = aggregateID
+	return e
 }
 
-// UserLinkedToAccount is emitted when a user is linked to an account.
-type UserLinkedToAccount struct {
-	shared.DomainEventBase
-	AggregateID string `json:"aggregate_id"`
-	AccountID   string `json:"account_id"`
+// Type returns the CloudEvent type.
+func (e *UserProfileUpdated) Type() string {
+	return e.CloudEventEnvelope.Type
 }
 
-// NewUserLinkedToAccount creates a UserLinkedToAccount event.
-func NewUserLinkedToAccount(aggregateID string, accountID string) shared.DomainEvent {
-	return &UserLinkedToAccount{
-		DomainEventBase: shared.DomainEventBase{
-			Type:      "com.carddemo.user.linked.to.account",
-			Timestamp: time.Now().UTC(),
-		},
-		AggregateID: aggregateID,
-		AccountID:   accountID,
-	}
+// AggregateID returns the aggregate ID.
+func (e *UserProfileUpdated) AggregateID() string {
+	return e.Subject
 }
