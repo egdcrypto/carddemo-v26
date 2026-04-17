@@ -31,13 +31,6 @@ func (m *MockBatchSettlementRepository) Save(aggregate *model.BatchSettlement) e
 	return nil
 }
 
-func (m *MockBatchSettlementRepository) Delete(id string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.data, id)
-	return nil
-}
-
 func (m *MockBatchSettlementRepository) List() ([]*model.BatchSettlement, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
