@@ -1,56 +1,62 @@
 package model
 
 import (
-	"time"
+	"errors"
 
+	"github.com/carddemo/project/src/domain/userprofile/command"
+	"github.com/carddemo/project/src/domain/userprofile/event"
 	"github.com/carddemo/project/src/domain/shared"
 )
 
-// UserProfile is the aggregate root for the UserProfile domain.
+var (
+	ErrInvalidCommand = errors.New("invalid command")
+)
+
+// UserProfile represents the UserProfile Aggregate.
 type UserProfile struct {
 	shared.AggregateRoot
-	ID    string
-	Email string
+	ID        string
+	AccountID string
+	FirstName string
+	LastName  string
+	Email     string
+	Version   int
 }
 
 // NewUserProfile creates a new UserProfile aggregate.
-func NewUserProfile(id, email string) *UserProfile {
+func NewUserProfile(id string, accountID string) *UserProfile {
 	return &UserProfile{
-		AggregateRoot: shared.AggregateRoot{
-			Version:   1,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		},
-		ID:    id,
-		Email: email,
+		AggregateRoot: shared.AggregateRoot{},
+		ID:            id,
+		AccountID:     accountID,
+		Version:       0,
 	}
 }
 
-// ToDocument converts the domain aggregate to a representation suitable for MongoDB.
-func (u *UserProfile) ToDocument() *UserProfileDocument {
-	return &UserProfileDocument{
-		ID:        u.ID,
-		Email:     u.Email,
-		Version:   u.Version,
-		CreatedAt: u.CreatedAt,
-		UpdatedAt: u.UpdatedAt,
+// Handle processes commands.
+func (u *UserProfile) Handle(cmd interface{}) error {
+	switch c := cmd.(type) {
+	case command.UpdateProfileCommand:
+		return u.updateProfile(c)
+	default:
+		return ErrInvalidCommand
 	}
 }
 
-// FromDocument hydrates the domain aggregate from MongoDB data.
-func (u *UserProfile) FromDocument(doc *UserProfileDocument) {
-	u.ID = doc.ID
-	u.Email = doc.Email
-	u.Version = doc.Version
-	u.CreatedAt = doc.CreatedAt
-	u.UpdatedAt = doc.UpdatedAt
-}
+// updateProfile handles profile updates.
+func (u *UserProfile) updateProfile(cmd command.UpdateProfileCommand) error {
+	u.FirstName = cmd.FirstName
+	u.LastName = cmd.LastName
+	u.Email = cmd.Email
 
-// UserProfileDocument is the database schema for UserProfile.
-type UserProfileDocument struct {
-	ID        string    `bson:"_id"`
-	Email     string    `bson:"email"`
-	Version   int       `bson:"version"`
-	CreatedAt time.Time `bson:"created_at"`
-	UpdatedAt time.Time `bson:"updated_at"`
+	// Create Event
+	e := event.NewUserProfileUpdated(u.ID)
+	e.Payload.UserProfileID = u.ID
+	e.Payload.AccountID = u.AccountID
+	e.Payload.FirstName = cmd.FirstName
+	e.Payload.LastName = cmd.LastName
+	e.Payload.Email = cmd.Email
+
+	u.AddDomainEvent(e)
+	return nil
 }
